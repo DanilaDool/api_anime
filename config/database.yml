@@ -1,0 +1,36 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: localhost
+  username: postgres
+  password: password # замени на свой, или убери, если не нужен
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  timeout: 5000
+
+development:
+  <<: *default
+  database: anime_app_dev
+
+test:
+  <<: *default
+  database: anime_app_test
+
+production:
+  primary:
+    <<: *default
+    database: anime_app_prod
+
+  cache:
+    <<: *default
+    database: anime_app_prod_cache
+    migrations_paths: db/cache_migrate
+
+  queue:
+    <<: *default
+    database: anime_app_prod_queue
+    migrations_paths: db/queue_migrate
+
+  cable:
+    <<: *default
+    database: anime_app_prod_cable
+    migrations_paths: db/cable_migrate
