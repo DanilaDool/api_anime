@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2025_03_25_193956) do
+ActiveRecord::Schema[8.0].define(version: 2025_05_12_162748) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pg_trgm"
@@ -57,6 +57,8 @@ ActiveRecord::Schema[8.0].define(version: 2025_03_25_193956) do
     t.boolean "not_blocked_for_me"
     t.jsonb "material_data"
     t.integer "age_limit"
+    t.string "worldart_poster"
+    t.string "worldart_country"
     t.index ["title"], name: "index_animes_on_title", opclass: :gin_trgm_ops, using: :gin
   end
 end

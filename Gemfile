@@ -12,6 +12,7 @@ gem 'nokogiri'
 gem 'json'
 gem 'rack-cors'
 gem 'whenever', require: false
+gem 'pagy'
 
 
 # Build JSON APIs with ease [https://github.com/rails/jbuilder]

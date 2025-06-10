@@ -1,4 +1,5 @@
-every 2.hours do # 1.minute 1.day 1.week 1.month 1.year is also supported
-    rake "parse_anime:parse_data"
+set :output, 'log/cron.log'
+
+every 2.hours do
+  command "cd /Users/air/Ruby_Home/AnimeApp3 && /Users/air/.rbenv/shims/bundle exec rake parse_anime:parse_data RAILS_ENV=production"
 end
-  

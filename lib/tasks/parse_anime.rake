@@ -1,6 +1,6 @@
 namespace :parse_anime do
   task parse_data: :environment do
-    url = 'https://kodikapi.com/list?token=5806763453666325d912b64d6031b627&types=anime-serial,anime&with_material_data=true'
+    url = 'https://kodikapi.com/list?token=5806763453666325d912b64d6031b627&types=anime-serial,anime&with_material_data=true&limit=100&not_blocked_in=RU'
 
     begin
       json_data = URI.open(url).read
@@ -15,7 +15,7 @@ namespace :parse_anime do
         studios = material_data['anime_studios'] || []
         kind = material_data['anime_kind']
 
-        is_chinese, reason = is_probably_chinese?(title_orig, other_titles_jp, studios, kind, material_data)
+        is_chinese, reason = is_probably_chinese?(title_orig, other_titles_jp, studios, kind, material_data, anime_data['worldart_link'])
 
         if is_chinese
           puts "⛔️ Skipped chinese anime: #{title_orig} | Причина: #{reason}"
@@ -70,6 +70,8 @@ namespace :parse_anime do
           anime.next_episode_at = get_anime_next_episode_at(shikimori_id) || material_data['next_episode_at']
           anime.studios = get_anime_studios(shikimori_id)
           anime.videos = get_anime_videos(shikimori_id)
+          anime.worldart_poster = worldart_url_poster(anime_data['worldart_link'])
+          anime.worldart_country = extract_country(anime_data['worldart_link'])
           anime.duration = get_anime_duration(shikimori_id) || material_data['duration']
 
           anime.description = get_anime_description(shikimori_id) ||
@@ -79,6 +81,7 @@ namespace :parse_anime do
           anime.material_data = material_data
 
           puts "✅ Saved anime: #{anime.title} (#{anime.title_orig}) | Score: #{anime.score}"
+
           anime.save
         end
       end
@@ -90,9 +93,26 @@ namespace :parse_anime do
   end
 end
 
-def is_probably_chinese?(title_orig, other_titles_jp, studios = [], kind = nil, material_data = {})
+def is_probably_chinese?(title_orig, other_titles_jp, studios = [], kind = nil, material_data = {}, worldart_link = nil)
+  # 1. Если есть ссылка на World-Art — проверяем **только её**
+  if worldart_link.to_s.strip != ''
+    country = extract_country(worldart_link)
+    if country == 'Китай'
+      return [true, '🌐 На World-Art указана страна — Китай']
+    else
+      return [false, '✅ На World-Art указана не китайская страна — считаем безопасным']
+    end
+  end
+
+  # 2. Если ссылки нет — проводим остальные проверки
   reasons = []
 
+  # Страна из material_data
+  if material_data['countries']&.include?('Китай')
+    reasons << '🇨🇳 Указана страна — Китай'
+  end
+
+  # Студия
   chinese_studios = %w[
     Shanghai Animation Film Studio CCTV Animation Alpha Group Creative Power Entertaining
     Mingxing Animation Hongmeng Cartoon Fantawild Animation Light Chaser Animation Studios
@@ -105,21 +125,7 @@ def is_probably_chinese?(title_orig, other_titles_jp, studios = [], kind = nil, 
     Pb Animation Co. Ltd. LAN Studio iQIYI Youku Wulifang Year Young Culture Tang Kirin Culture
     Guton Animation Studio Wawayu Animation Seven Stone Entertainment Hangzhou Qitong Dongman
   ]
-
-  # Проверка японских символов (катакана или хирагана)
-  has_japanese = ->(str) { str =~ /[\p{Hiragana}\p{Katakana}]/ }
-  has_japanese_text = has_japanese.call(title_orig.to_s) || other_titles_jp.any?(&has_japanese)
-
-  if has_japanese_text
-    return [false, '✅ Обнаружена японская фонетика (хирагана/катакана) — считаем японским']
-  end
-
-  # Страна
-  if material_data['countries']&.include?('Китай')
-    reasons << '🇨🇳 Указана страна — Китай'
-  end
-
-  # Студия
+  
   if (studios & chinese_studios).any?
     reasons << '🏭 Студия входит в список китайских'
   end
@@ -135,6 +141,11 @@ def is_probably_chinese?(title_orig, other_titles_jp, studios = [], kind = nil, 
     reasons << '🈸 ONA + найдено китайское пиньинь-слово'
   end
 
+  # Японская фонетика — как последняя защита
+  has_japanese = ->(str) { str =~ /[\p{Hiragana}\p{Katakana}]/ }
+  has_japanese_text = has_japanese.call(title_orig.to_s) || other_titles_jp.any?(&has_japanese)
+  return [false, '✅ Обнаружена японская фонетика (хирагана/катакана) — считаем японским'] if has_japanese_text
+
   if reasons.any?
     [true, reasons.join('; ')]
   else
@@ -142,22 +153,39 @@ def is_probably_chinese?(title_orig, other_titles_jp, studios = [], kind = nil, 
   end
 end
 
+
 def worldart_url_poster(worldart_link)
-  url = worldart_link
-  html = URI.open(url).read
+  html = URI.open(worldart_link).read
   doc = Nokogiri::HTML(html)
-  
-  # Ищем тег <img> внутри блока, где размещён постер
-  poster_img = doc.css('img').find do |img|
-    img['src']&.include?('animation_poster')
-  end
-  
+
+  # Ищем <img> с src, содержащим 'animation/img/'
+  poster_img = doc.css('img').find { |img| img['src']&.include?('animation/img/') }
+
   if poster_img
-    poster_url = "http://www.world-art.ru/#{poster_img['src']}"
+    poster_url = poster_img['src'].start_with?('http') ? poster_img['src'] : "http://www.world-art.ru/#{poster_img['src']}"
     puts "Постер: #{poster_url}"
+    return poster_url
   else
     puts "Постер не найден"
+    return nil
   end
+end
+
+def extract_country(worldart_link)
+  html = URI.open(worldart_link).read
+  doc = Nokogiri::HTML(html)
+
+  label_td = doc.css('td.review').find { |td| td.text.strip == 'Производство' }
+
+  # Ищем следующий td.review после "Производство", пропуская пустые узлы
+  if label_td
+    next_td = label_td.parent&.css('td.review')[1] # [0] — "Производство", [1] — нужная страна
+    country = next_td&.text&.strip
+    puts "Страна: #{country}"
+    return country
+  end
+
+  nil
 end
 
 def contains_chinese?(text)
