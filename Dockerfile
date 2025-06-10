@@ -29,8 +29,15 @@ ENV RAILS_ENV="production" \
 FROM base AS build
 
 # Install packages needed to build gems
+# Install packages needed to build gems (включая libpq для gem pg)
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libyaml-dev pkg-config && \
+    apt-get install --no-install-recommends -y \
+      build-essential \
+      git \
+      libyaml-dev \
+      pkg-config \
+      libpq-dev \
+      postgresql-client && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Install application gems
